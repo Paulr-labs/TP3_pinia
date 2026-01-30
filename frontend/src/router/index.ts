@@ -2,74 +2,117 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHistory(),
   routes: [
     {
       path: '/',
       name: 'home',
-      component: () => import('../views/HomeView.vue')
+      component: () => import('@/views/HomeView.vue'),
+      meta: { title: 'Accueil' }
     },
     {
       path: '/books',
       name: 'books',
-      component: () => import('../views/BooksView.vue')
+      component: () => import('@/views/BooksView.vue'),
+      meta: { title: 'Catalogue' }
     },
     {
       path: '/books/:id',
       name: 'book-detail',
-      component: () => import('../views/BookDetailView.vue')
+      component: () => import('@/views/BookDetailView.vue'),
+      props: true,
+      meta: { title: 'Détail du livre' }
     },
     {
       path: '/login',
       name: 'login',
-      component: () => import('../views/LoginView.vue'),
-      meta: { guest: true } // Accessible uniquement aux non-connectés
+      component: () => import('@/views/LoginView.vue'),
+      meta: { 
+        title: 'Connexion',
+        guest: true  // Accessible uniquement aux non-connectés
+      }
+    },
+    {
+      path: '/register',
+      name: 'register',
+      component: () => import('@/views/RegisterView.vue'),
+      meta: { 
+        title: 'Inscription',
+        guest: true
+      }
     },
     {
       path: '/admin',
       name: 'admin',
-      component: () => import('../views/AdminView.vue'),
-      meta: { requiresAuth: true, requiresAdmin: true }
+      component: () => import('@/views/AdminView.vue'),
+      meta: { 
+        title: 'Administration',
+        requiresAuth: true,
+        requiresAdmin: true
+      }
     },
     {
       path: '/admin/books/new',
       name: 'book-create',
-      component: () => import('../views/BookFormView.vue'),
-      meta: { requiresAuth: true, requiresAdmin: true }
+      component: () => import('@/views/BookFormView.vue'),
+      meta: { 
+        title: 'Ajouter un livre',
+        requiresAuth: true,
+        requiresAdmin: true
+      }
     },
     {
       path: '/admin/books/:id/edit',
       name: 'book-edit',
-      component: () => import('../views/BookFormView.vue'),
-      meta: { requiresAuth: true, requiresAdmin: true }
+      component: () => import('@/views/BookFormView.vue'),
+      props: true,
+      meta: { 
+        title: 'Modifier le livre',
+        requiresAuth: true,
+        requiresAdmin: true
+      }
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('@/views/NotFoundView.vue'),
+      meta: { title: 'Page non trouvée' }
     }
   ]
 })
 
-// Guard global (Vérification avant chaque changement de page)
-router.beforeEach(async (to, from) => {
+// Navigation Guards
+router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore()
-
-  // 1. Vérifier l'authentification au premier chargement (si token présent mais pas user)
+  
+  // Mettre à jour le titre de la page
+  document.title = `${to.meta.title || 'Page'} | Les Belles Lettres`
+  
+  // Vérifier l'authentification au premier chargement
   if (authStore.token && !authStore.user) {
     await authStore.checkAuth()
   }
-
-  // 2. Route nécessitant une authentification
+  
+  // Route protégée - nécessite authentification
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    // On redirige vers login en gardant en mémoire où il voulait aller
-    return { name: 'login', query: { redirect: to.fullPath } }
+    return next({ 
+      name: 'login', 
+      query: { redirect: to.fullPath } 
+    })
   }
-
-  // 3. Route nécessitant le rôle admin
+  
+  // Route admin - nécessite le rôle admin
   if (to.meta.requiresAdmin && !authStore.isAdmin) {
-    return { name: 'home' } // Ou une page "Accès interdit"
+    // Rediriger vers l'accueil si connecté mais pas admin
+    return next({ name: 'home' })
   }
-
-  // 4. Route réservée aux invités (ex: login)
+  
+  // Route guest (login/register) - rediriger si déjà connecté
   if (to.meta.guest && authStore.isAuthenticated) {
-    return { name: 'home' } // Un user connecté n'a rien à faire sur /login
+    return next({ name: 'home' })
   }
+  
+  next()
 })
 
 export default router

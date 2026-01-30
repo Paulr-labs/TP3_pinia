@@ -1,48 +1,93 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
-import { useRouter, useRoute, RouterLink } from 'vue-router'
+import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
-const route = useRoute()
 const authStore = useAuthStore()
 
 // Données du formulaire
-const credentials = reactive({
+const formData = reactive({
   username: '',
-  password: ''
+  password: '',
+  confirmPassword: ''
 })
+
+// Message de succès
+const successMessage = ref('')
 
 // Erreurs de validation
 const errors = reactive({
   username: '',
-  password: ''
+  password: '',
+  confirmPassword: ''
 })
 
 const touched = reactive({
   username: false,
-  password: false
+  password: false,
+  confirmPassword: false
 })
 
 const showPassword = ref(false)
+const showConfirmPassword = ref(false)
 
 // Validation d'un champ
-function validateField(field: 'username' | 'password'): boolean {
-  const value = credentials[field]
+function validateField(field: 'username' | 'password' | 'confirmPassword'): boolean {
+  const value = formData[field]
   
-  if (!value || value.trim() === '') {
-    errors[field] = field === 'username' 
-      ? "Le nom d'utilisateur est requis"
-      : "Le mot de passe est requis"
-    return false
+  if (field === 'username') {
+    if (!value || value.trim() === '') {
+      errors.username = "Le nom d'utilisateur est requis"
+      return false
+    }
+    if (value.length < 3) {
+      errors.username = 'Minimum 3 caractères'
+      return false
+    }
+    if (value.length > 20) {
+      errors.username = 'Maximum 20 caractères'
+      return false
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(value)) {
+      errors.username = 'Lettres, chiffres et _ uniquement'
+      return false
+    }
+    errors.username = ''
+    return true
   }
   
-  errors[field] = ''
+  if (field === 'password') {
+    if (!value || value.trim() === '') {
+      errors.password = 'Le mot de passe est requis'
+      return false
+    }
+    if (value.length < 6) {
+      errors.password = 'Minimum 6 caractères'
+      return false
+    }
+    errors.password = ''
+    return true
+  }
+  
+  if (field === 'confirmPassword') {
+    if (!value || value.trim() === '') {
+      errors.confirmPassword = 'Veuillez confirmer le mot de passe'
+      return false
+    }
+    if (value !== formData.password) {
+      errors.confirmPassword = 'Les mots de passe ne correspondent pas'
+      return false
+    }
+    errors.confirmPassword = ''
+    return true
+  }
+  
   return true
 }
 
 // Gérer le blur
-function handleBlur(field: 'username' | 'password') {
+function handleBlur(field: 'username' | 'password' | 'confirmPassword') {
   touched[field] = true
   validateField(field)
 }
@@ -51,42 +96,38 @@ function handleBlur(field: 'username' | 'password') {
 function validateAll(): boolean {
   touched.username = true
   touched.password = true
+  touched.confirmPassword = true
   
   const usernameValid = validateField('username')
   const passwordValid = validateField('password')
+  const confirmValid = validateField('confirmPassword')
   
-  return usernameValid && passwordValid
+  return usernameValid && passwordValid && confirmValid
 }
 
 // Soumission du formulaire
 async function handleSubmit() {
-  console.log('handleSubmit appelé')
-  
   // Valider tous les champs
-  if (!validateAll()) {
-    console.log('Validation échouée')
-    return
-  }
+  if (!validateAll()) return
   
-  console.log('Validation OK, tentative de connexion...')
-  
-  // Effacer l'erreur précédente
+  // Effacer les messages précédents
   authStore.clearError()
+  successMessage.value = ''
   
-  // Tenter la connexion
-  const success = await authStore.login(credentials)
-  console.log('Résultat login:', success)
+  // Tenter l'inscription
+  const success = await authStore.register({
+    username: formData.username,
+    password: formData.password
+  })
   
   if (success) {
-    // Rediriger vers la page demandée ou l'accueil
-    const redirect = route.query.redirect as string || '/'
-    router.push(redirect)
+    successMessage.value = 'Compte créé avec succès ! Redirection vers la connexion...'
+    
+    // Rediriger vers la page de connexion après 2 secondes
+    setTimeout(() => {
+      router.push('/login')
+    }, 2000)
   }
-}
-
-// Toggle visibilité mot de passe
-function togglePassword() {
-  showPassword.value = !showPassword.value
 }
 </script>
 
@@ -95,9 +136,14 @@ function togglePassword() {
     <div class="auth-container">
       <div class="auth-card">
         <header class="auth-header">
-          <h1>Connexion</h1>
-          <p>Connectez-vous pour accéder à votre espace.</p>
+          <h1>Inscription</h1>
+          <p>Créez votre compte pour accéder à l'espace utilisateur.</p>
         </header>
+
+        <!-- Message de succès -->
+        <div v-if="successMessage" class="alert alert-success">
+          {{ successMessage }}
+        </div>
 
         <!-- Message d'erreur global -->
         <div v-if="authStore.error" class="alert alert-error">
@@ -112,10 +158,10 @@ function togglePassword() {
             </label>
             <input
               id="username"
-              v-model="credentials.username"
+              v-model="formData.username"
               type="text"
               class="form-input"
-              placeholder="Votre nom d'utilisateur"
+              placeholder="Choisissez un nom d'utilisateur"
               autocomplete="username"
               @blur="handleBlur('username')"
               @input="validateField('username')"
@@ -123,6 +169,7 @@ function togglePassword() {
             <span v-if="touched.username && errors.username" class="form-error">
               {{ errors.username }}
             </span>
+            <span class="form-hint">3-20 caractères : lettres, chiffres, _</span>
           </div>
 
           <!-- Mot de passe -->
@@ -133,25 +180,54 @@ function togglePassword() {
             <div class="password-input-wrapper">
               <input
                 id="password"
-                v-model="credentials.password"
+                v-model="formData.password"
                 :type="showPassword ? 'text' : 'password'"
                 class="form-input"
-                placeholder="Votre mot de passe"
-                autocomplete="current-password"
+                placeholder="Choisissez un mot de passe"
+                autocomplete="new-password"
                 @blur="handleBlur('password')"
                 @input="validateField('password')"
               />
               <button 
                 type="button" 
                 class="password-toggle"
-                @click="togglePassword"
-                :title="showPassword ? 'Masquer' : 'Afficher'"
+                @click="showPassword = !showPassword"
               >
                 {{ showPassword ? '👁️' : '👁️‍🗨️' }}
               </button>
             </div>
             <span v-if="touched.password && errors.password" class="form-error">
               {{ errors.password }}
+            </span>
+            <span class="form-hint">Minimum 6 caractères</span>
+          </div>
+
+          <!-- Confirmation mot de passe -->
+          <div class="form-group" :class="{ 'has-error': touched.confirmPassword && errors.confirmPassword }">
+            <label for="confirmPassword" class="form-label">
+              Confirmer le mot de passe
+            </label>
+            <div class="password-input-wrapper">
+              <input
+                id="confirmPassword"
+                v-model="formData.confirmPassword"
+                :type="showConfirmPassword ? 'text' : 'password'"
+                class="form-input"
+                placeholder="Confirmez votre mot de passe"
+                autocomplete="new-password"
+                @blur="handleBlur('confirmPassword')"
+                @input="validateField('confirmPassword')"
+              />
+              <button 
+                type="button" 
+                class="password-toggle"
+                @click="showConfirmPassword = !showConfirmPassword"
+              >
+                {{ showConfirmPassword ? '👁️' : '👁️‍🗨️' }}
+              </button>
+            </div>
+            <span v-if="touched.confirmPassword && errors.confirmPassword" class="form-error">
+              {{ errors.confirmPassword }}
             </span>
           </div>
 
@@ -162,27 +238,18 @@ function togglePassword() {
             :disabled="authStore.loading"
           >
             <span v-if="authStore.loading" class="spinner-small"></span>
-            {{ authStore.loading ? 'Connexion...' : 'Se connecter' }}
+            {{ authStore.loading ? 'Création...' : 'Créer mon compte' }}
           </button>
         </form>
 
         <footer class="auth-footer">
           <p>
-            Pas encore de compte ?
-            <RouterLink to="/register" class="auth-link">
-              Créer un compte
+            Déjà un compte ?
+            <RouterLink to="/login" class="auth-link">
+              Se connecter
             </RouterLink>
           </p>
         </footer>
-
-        <!-- Info comptes de test -->
-        <div class="test-accounts">
-          <h4>Comptes de test</h4>
-          <div class="account-info">
-            <p><strong>Admin:</strong> admin / admin123</p>
-            <p><strong>Utilisateur:</strong> user / user123</p>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -229,6 +296,14 @@ function togglePassword() {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+}
+
+/* Form hint */
+.form-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  margin-top: 0.25rem;
 }
 
 /* Password input wrapper */
@@ -298,31 +373,7 @@ function togglePassword() {
   text-decoration: underline;
 }
 
-/* Test accounts info */
-.test-accounts {
-  margin-top: 1.5rem;
-  padding: 1rem;
-  background: var(--color-bg-light);
-  border-radius: var(--radius-md);
-  text-align: center;
-}
-
-.test-accounts h4 {
-  font-size: 0.875rem;
-  color: var(--color-text-light);
-  margin-bottom: 0.5rem;
-}
-
-.account-info {
-  font-size: 0.875rem;
-}
-
-.account-info p {
-  margin: 0.25rem 0;
-  color: var(--color-text);
-}
-
-/* Alert */
+/* Alerts */
 .alert {
   padding: 1rem;
   border-radius: var(--radius-md);
@@ -333,6 +384,12 @@ function togglePassword() {
   background: #fef2f2;
   border: 1px solid #fecaca;
   color: var(--color-error);
+}
+
+.alert-success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
 }
 
 @keyframes spin {

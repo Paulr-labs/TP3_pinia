@@ -1,16 +1,13 @@
-// src/services/api.ts
 import axios from 'axios'
-import router from '@/router'
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: '/api',  // Utilise le proxy Vite configuré dans vite.config.ts
   headers: {
     'Content-Type': 'application/json'
   }
 })
 
-// INTERCEPTEUR DE REQUETE
-// Ajoute le token JWT a chaque requete sortante
+// Intercepteur de requête - ajoute le token JWT
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token')
@@ -19,19 +16,24 @@ api.interceptors.request.use(
     }
     return config
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    return Promise.reject(error)
+  }
 )
 
-// INTERCEPTEUR DE REPONSE
-// Gere les erreurs 401 (non authentifie)
+// Intercepteur de réponse - gère les erreurs 401
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expire ou invalide
+      // Token expiré ou invalide
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      router.push('/login')
+      
+      // Rediriger vers la page de login si pas déjà dessus
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login?expired=true'
+      }
     }
     return Promise.reject(error)
   }

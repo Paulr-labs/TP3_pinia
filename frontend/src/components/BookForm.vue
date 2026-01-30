@@ -1,178 +1,265 @@
 <script setup lang="ts">
+import { watch, onMounted } from 'vue'
 import { useValidation, validationRules } from '@/composables/useValidation'
-import type { Book, BookCategory } from '@/types'
-import { BookCategoryLabels } from '@/types'
+import type { Book } from '@/types'
+import { BookCategory, BookCategoryLabels } from '@/types'
 
-// Si fourni, mode edition
 const props = defineProps<{
-  book?: Book
+  initialData?: Partial<Book>
+  isEdit?: boolean
+  loading?: boolean
 }>()
 
 const emit = defineEmits<{
-  submit: [book: Omit<Book, 'id'>]
+  submit: [book: Book]
   cancel: []
 }>()
 
-const currentYear = new Date().getFullYear()
+// Liste des catégories pour le select
+const categories = Object.values(BookCategory)
 
-const { formData, errors, touched, handleBlur, handleInput, validateAll, isValid } = useValidation(
-  {
-    title: props.book?.title || '',
-    author: props.book?.author || '',
-    isbn: props.book?.isbn || '',
-    price: props.book?.price || 0,
-    description: props.book?.description || '',
-    category: props.book?.category || '' as BookCategory,
-    publicationYear: props.book?.publicationYear || currentYear,
-    coverUrl: props.book?.coverUrl || ''
-  },
-  {
-    title: [
-      validationRules.required(),
-      validationRules.minLength(2),
-      validationRules.maxLength(200)
-    ],
-    author: [
-      validationRules.required(),
-      validationRules.minLength(2),
-      validationRules.maxLength(100)
-    ],
-    isbn: [
-      validationRules.required(),
-      validationRules.isbn()
-    ],
-    price: [
-      validationRules.required(),
-      validationRules.positiveNumber()
-    ],
-    category: [
-      validationRules.required('Sélectionnez une catégorie')
-    ],
-    publicationYear: [
-      validationRules.required(),
-      validationRules.year(1800, currentYear)
-    ],
-    description: [
-        validationRules.maxLength(1000)
-    ]
+// Données initiales du formulaire
+const initialBook: Book = {
+  title: '',
+  author: '',
+  isbn: '',
+  price: 0,
+  description: '',
+  coverUrl: '',
+  publicationYear: new Date().getFullYear(),
+  category: BookCategory.ROMAN
+}
+
+// Règles de validation
+const rules = {
+  title: [
+    validationRules.required('Le titre est obligatoire'),
+    validationRules.minLength(2, 'Le titre doit avoir au moins 2 caractères'),
+    validationRules.maxLength(200, 'Le titre ne peut pas dépasser 200 caractères')
+  ],
+  author: [
+    validationRules.required("Le nom de l'auteur est obligatoire"),
+    validationRules.minLength(2, 'Le nom doit avoir au moins 2 caractères'),
+    validationRules.maxLength(100, 'Le nom ne peut pas dépasser 100 caractères')
+  ],
+  isbn: [
+    validationRules.required("L'ISBN est obligatoire"),
+    validationRules.isbn()
+  ],
+  price: [
+    validationRules.required('Le prix est obligatoire'),
+    validationRules.positiveNumber('Le prix doit être positif')
+  ],
+  publicationYear: [
+    validationRules.year("Année de publication invalide")
+  ],
+  description: [
+    validationRules.maxLength(1000, 'La description ne peut pas dépasser 1000 caractères')
+  ],
+  coverUrl: [
+    validationRules.url("L'URL de la couverture est invalide")
+  ]
+}
+
+// Utiliser le composable de validation
+const {
+  formData,
+  errors,
+  validateAll,
+  handleBlur,
+  handleInput,
+  resetForm,
+  setFormData,
+  hasError,
+  getFormData
+} = useValidation(initialBook, rules)
+
+// Charger les données du livre si en mode édition
+onMounted(() => {
+  if (props.initialData) {
+    setFormData({ ...initialBook, ...props.initialData })
   }
-)
+})
 
+// Surveiller les changements du prop initialData
+watch(() => props.initialData, (newData: Partial<Book> | undefined) => {
+  if (newData) {
+    setFormData({ ...initialBook, ...newData })
+  }
+}, { deep: true })
+
+// Soumettre le formulaire
 function handleSubmit() {
   if (validateAll()) {
-    emit('submit', { ...formData })
+    emit('submit', getFormData())
   }
+}
+
+// Annuler
+function handleCancel() {
+  resetForm()
+  emit('cancel')
+}
+
+// Helper pour obtenir le label de la catégorie
+function getCategoryLabel(category: BookCategory): string {
+  return BookCategoryLabels[category] || category
 }
 </script>
 
 <template>
   <form @submit.prevent="handleSubmit" class="book-form">
-    <div class="form-group">
-      <label for="title">Titre</label>
+    <!-- Titre -->
+    <div class="form-group" :class="{ error: hasError('title') }">
+      <label for="title">Titre *</label>
       <input
         id="title"
         v-model="formData.title"
+        type="text"
         @blur="handleBlur('title')"
         @input="handleInput('title')"
-        type="text"
-        :class="{ invalid: touched.title && errors.title }"
+        placeholder="Ex: Les Fleurs du Mal"
       />
-      <span v-if="touched.title && errors.title" class="error">{{ errors.title }}</span>
+      <span v-if="hasError('title')" class="error-message">
+        {{ errors.title }}
+      </span>
     </div>
 
-    <div class="form-group">
-      <label for="author">Auteur</label>
+    <!-- Auteur -->
+    <div class="form-group" :class="{ error: hasError('author') }">
+      <label for="author">Auteur *</label>
       <input
         id="author"
         v-model="formData.author"
+        type="text"
         @blur="handleBlur('author')"
         @input="handleInput('author')"
-        type="text"
-        :class="{ invalid: touched.author && errors.author }"
+        placeholder="Ex: Charles Baudelaire"
       />
-      <span v-if="touched.author && errors.author" class="error">{{ errors.author }}</span>
+      <span v-if="hasError('author')" class="error-message">
+        {{ errors.author }}
+      </span>
     </div>
 
-    <div class="form-group">
-      <label for="isbn">ISBN</label>
-      <input
-        id="isbn"
-        v-model="formData.isbn"
-        @blur="handleBlur('isbn')"
-        @input="handleInput('isbn')"
-        type="text"
-        placeholder="978-XXXXXXXXXX"
-        :class="{ invalid: touched.isbn && errors.isbn }"
-      />
-      <span v-if="touched.isbn && errors.isbn" class="error">{{ errors.isbn }}</span>
-    </div>
-
-    <div class="form-group">
-      <label for="category">Catégorie</label>
-      <select
-        id="category"
-        v-model="formData.category"
-        @blur="handleBlur('category')"
-        @change="handleInput('category')"
-        :class="{ invalid: touched.category && errors.category }"
-      >
-        <option value="" disabled>Choisir une catégorie</option>
-        <option v-for="(label, key) in BookCategoryLabels" :key="key" :value="key">
-          {{ label }}
-        </option>
-      </select>
-      <span v-if="touched.category && errors.category" class="error">{{ errors.category }}</span>
-    </div>
-
+    <!-- ISBN et Prix -->
     <div class="form-row">
-      <div class="form-group">
-        <label for="price">Prix (€)</label>
+      <div class="form-group" :class="{ error: hasError('isbn') }">
+        <label for="isbn">ISBN *</label>
+        <input
+          id="isbn"
+          v-model="formData.isbn"
+          type="text"
+          @blur="handleBlur('isbn')"
+          @input="handleInput('isbn')"
+          placeholder="978-XXXXXXXXXX"
+        />
+        <span v-if="hasError('isbn')" class="error-message">
+          {{ errors.isbn }}
+        </span>
+      </div>
+
+      <div class="form-group" :class="{ error: hasError('price') }">
+        <label for="price">Prix (EUR) *</label>
         <input
           id="price"
           v-model.number="formData.price"
-          @blur="handleBlur('price')"
-          @input="handleInput('price')"
           type="number"
           step="0.01"
-          :class="{ invalid: touched.price && errors.price }"
+          min="0"
+          @blur="handleBlur('price')"
+          @input="handleInput('price')"
         />
-        <span v-if="touched.price && errors.price" class="error">{{ errors.price }}</span>
-      </div>
-
-      <div class="form-group">
-        <label for="year">Année</label>
-        <input
-          id="year"
-          v-model.number="formData.publicationYear"
-          @blur="handleBlur('publicationYear')"
-          @input="handleInput('publicationYear')"
-          type="number"
-          :class="{ invalid: touched.publicationYear && errors.publicationYear }"
-        />
-        <span v-if="touched.publicationYear && errors.publicationYear" class="error">{{ errors.publicationYear }}</span>
+        <span v-if="hasError('price')" class="error-message">
+          {{ errors.price }}
+        </span>
       </div>
     </div>
 
-    <div class="form-group">
+    <!-- Catégorie et Année -->
+    <div class="form-row">
+      <div class="form-group">
+        <label for="category">Catégorie *</label>
+        <select id="category" v-model="formData.category">
+          <option v-for="cat in categories" :key="cat" :value="cat">
+            {{ getCategoryLabel(cat) }}
+          </option>
+        </select>
+      </div>
+
+      <div class="form-group" :class="{ error: hasError('publicationYear') }">
+        <label for="year">Année de publication</label>
+        <input
+          id="year"
+          v-model.number="formData.publicationYear"
+          type="number"
+          min="1450"
+          :max="new Date().getFullYear() + 1"
+          @blur="handleBlur('publicationYear')"
+          @input="handleInput('publicationYear')"
+        />
+        <span v-if="hasError('publicationYear')" class="error-message">
+          {{ errors.publicationYear }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Description -->
+    <div class="form-group" :class="{ error: hasError('description') }">
       <label for="description">Description</label>
       <textarea
         id="description"
         v-model="formData.description"
+        rows="4"
         @blur="handleBlur('description')"
         @input="handleInput('description')"
-        rows="4"
-        :class="{ invalid: touched.description && errors.description }"
+        placeholder="Résumé ou description du livre..."
       ></textarea>
-      <div class="char-count" :class="{ 'text-danger': (formData.description?.length || 0) > 1000 }">
+      <div class="char-count" :class="{ warning: (formData.description?.length || 0) > 900 }">
         {{ formData.description?.length || 0 }} / 1000
       </div>
-      <span v-if="touched.description && errors.description" class="error">{{ errors.description }}</span>
+      <span v-if="hasError('description')" class="error-message">
+        {{ errors.description }}
+      </span>
     </div>
 
+    <!-- URL Couverture -->
+    <div class="form-group" :class="{ error: hasError('coverUrl') }">
+      <label for="coverUrl">URL de la couverture</label>
+      <input
+        id="coverUrl"
+        v-model="formData.coverUrl"
+        type="url"
+        @blur="handleBlur('coverUrl')"
+        @input="handleInput('coverUrl')"
+        placeholder="https://example.com/cover.jpg"
+      />
+      <span v-if="hasError('coverUrl')" class="error-message">
+        {{ errors.coverUrl }}
+      </span>
+    </div>
+
+    <!-- Aperçu de la couverture -->
+    <div v-if="formData.coverUrl" class="cover-preview">
+      <label>Aperçu de la couverture</label>
+      <img 
+        :src="formData.coverUrl" 
+        :alt="formData.title"
+        @error="($event.target as HTMLImageElement).style.display = 'none'"
+      />
+    </div>
+
+    <!-- Actions -->
     <div class="form-actions">
-      <button type="button" @click="emit('cancel')" class="btn-secondary">Annuler</button>
-      <button type="submit" :disabled="!isValid" class="btn-primary">
-        {{ props.book ? 'Modifier' : 'Créer' }}
+      <button type="button" class="btn btn-secondary" @click="handleCancel">
+        Annuler
+      </button>
+      <button 
+        type="submit" 
+        class="btn btn-primary" 
+        :disabled="loading"
+      >
+        <span v-if="loading">Enregistrement...</span>
+        <span v-else>{{ props.isEdit ? 'Modifier' : 'Ajouter' }}</span>
       </button>
     </div>
   </form>
@@ -182,82 +269,54 @@ function handleSubmit() {
 .book-form {
   max-width: 600px;
   margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
 }
 
 .form-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 1rem;
 }
 
-.form-row .form-group {
-  flex: 1;
-}
-
-label {
-  font-weight: bold;
-}
-
-input, select, textarea {
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-input.invalid, select.invalid, textarea.invalid {
-  border-color: red;
-}
-
-.error {
-  color: red;
-  font-size: 0.875rem;
+@media (max-width: 480px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .char-count {
   text-align: right;
-  font-size: 0.8rem;
-  color: #666;
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  margin-top: 0.25rem;
 }
 
-.text-danger {
-  color: red;
+.char-count.warning {
+  color: var(--color-accent);
+}
+
+.cover-preview {
+  margin-bottom: 1.5rem;
+}
+
+.cover-preview label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.cover-preview img {
+  max-width: 150px;
+  max-height: 200px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
 }
 
 .form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
-  margin-top: 1rem;
-}
-
-.btn-primary, .btn-secondary {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.btn-primary {
-  background-color: #42b983;
-  color: white;
-}
-
-.btn-primary:disabled {
-  background-color: #a0dcb9;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background-color: #ccc;
-  color: black;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
 }
 </style>

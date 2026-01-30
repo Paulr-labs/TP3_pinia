@@ -1,41 +1,44 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
-
-const authStore = useAuthStore()
-const router = useRouter()
-
-function logout() {
-  authStore.logout()
-  router.push('/login')
-}
+import { RouterView } from 'vue-router'
+import NavBar from '@/components/NavBar.vue'
 </script>
 
 <template>
-  <header>
-    <nav>
-      <RouterLink to="/">Accueil</RouterLink> |
-      <RouterLink to="/books">Livres</RouterLink> |
-      
-      <span v-if="!authStore.isAuthenticated">
-        <RouterLink to="/login">Connexion</RouterLink>
-      </span>
-      
-      <span v-else>
-        <span v-if="authStore.isAdmin">
-           | <RouterLink to="/admin">Admin</RouterLink>
-        </span>
-         | <a href="#" @click.prevent="logout">Déconnexion ({{ authStore.username }})</a>
-      </span>
-    </nav>
-  </header>
-
-  <RouterView />
+  <div class="app">
+    <NavBar />
+    <main class="main-content">
+      <RouterView />
+    </main>
+    <footer class="footer">
+      <div class="container">
+        <p>&copy; {{ new Date().getFullYear() }} Les Belles Lettres - Maison d'Édition</p>
+      </div>
+    </footer>
+  </div>
 </template>
 
 <style scoped>
-nav { padding: 1rem; background: #f4f4f4; margin-bottom: 2rem; }
-a { text-decoration: none; color: #333; margin: 0 5px; }
-a.router-link-active { font-weight: bold; color: #42b983; }
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1;
+  padding: 2rem 0;
+}
+
+.footer {
+  background-color: var(--color-primary);
+  color: white;
+  padding: 1.5rem 0;
+  text-align: center;
+  margin-top: auto;
+}
+
+.footer p {
+  margin: 0;
+  font-size: 0.9rem;
+}
 </style>

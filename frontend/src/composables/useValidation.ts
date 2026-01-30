@@ -1,141 +1,301 @@
-import { ref, computed, reactive } from 'vue'
+import { reactive, computed, toRefs } from 'vue'
 
-// Type pour une regle de validation
+// Type pour une règle de validation
 type ValidationRule = (value: any) => string | true
 
-// Type pour un ensemble de regles par champ
-type ValidationRules<T> = {
-  [K in keyof T]?: ValidationRule[]
+// Interface pour les règles par champ
+interface FieldRules {
+  [field: string]: ValidationRule[]
 }
 
+// Interface pour l'état du formulaire
+interface FormState {
+  formData: Record<string, any>
+  errors: Record<string, string>
+  touched: Record<string, boolean>
+}
+
+/**
+ * Composable pour la gestion de la validation des formulaires
+ */
 export function useValidation<T extends Record<string, any>>(
   initialData: T,
-  rules: ValidationRules<T>
+  rules: FieldRules
 ) {
-  // Donnees du formulaire
-  const formData = reactive({ ...initialData })
+  // État réactif du formulaire
+  const state: FormState = reactive({
+    formData: { ...initialData },
+    errors: {},
+    touched: {}
+  })
 
-  // Erreurs par champ
-  const errors = reactive<Record<keyof T, string>>(
-    {} as Record<keyof T, string>
-  )
+  // Le formulaire est valide si pas d'erreurs et au moins un champ touché
+  const isValid = computed(() => {
+    return Object.keys(state.errors).length === 0 &&
+           Object.keys(state.touched).length > 0
+  })
 
-  // Champs touches (pour n'afficher les erreurs qu'apres interaction)
-  const touched = reactive<Record<keyof T, boolean>>(
-    {} as Record<keyof T, boolean>
-  )
+  // Vérifier si le formulaire a été modifié
+  const isDirty = computed(() => {
+    return Object.keys(state.touched).length > 0
+  })
 
-  // Valider un champ specifique
-  function validateField(field: keyof T): boolean {
-    const fieldRules = rules[field] || []
+  /**
+   * Valider un champ spécifique
+   */
+  function validateField(field: string): boolean {
+    const fieldRules = rules[field]
+    if (!fieldRules) return true
+
+    const value = state.formData[field]
     
     for (const rule of fieldRules) {
-      const result = rule(formData[field])
+      const result = rule(value)
       if (result !== true) {
-        errors[field] = result
+        state.errors[field] = result
         return false
       }
     }
     
-    errors[field] = ''
+    // Pas d'erreur, supprimer l'erreur existante
+    delete state.errors[field]
     return true
   }
 
-  // Valider tous les champs (au submit)
+  /**
+   * Valider tous les champs
+   */
   function validateAll(): boolean {
-    let isValid = true
-    for (const field of Object.keys(rules) as (keyof T)[]) {
-      touched[field] = true
+    let valid = true
+    
+    for (const field of Object.keys(rules)) {
+      state.touched[field] = true
       if (!validateField(field)) {
-        isValid = false
+        valid = false
       }
     }
-    return isValid
+    
+    return valid
   }
 
-  // Marquer un champ comme touche (sur blur)
-  function handleBlur(field: keyof T): void {
-    touched[field] = true
+  /**
+   * Gestionnaire d'événement blur
+   */
+  function handleBlur(field: string): void {
+    state.touched[field] = true
     validateField(field)
   }
 
-  // Valider en temps reel (sur input)
-  function handleInput(field: keyof T): void {
-    if (touched[field]) {
+  /**
+   * Gestionnaire d'événement input (validation en temps réel)
+   */
+  function handleInput(field: string): void {
+    if (state.touched[field]) {
       validateField(field)
     }
   }
 
+  /**
+   * Réinitialiser le formulaire
+   */
   function resetForm(): void {
-    Object.assign(formData, initialData)
-    for (const key of Object.keys(errors)) {
-      errors[key as keyof T] = ''
-    }
-    for (const key of Object.keys(touched)) {
-      touched[key as keyof T] = false
-    }
+    Object.keys(state.formData).forEach(key => {
+      state.formData[key] = initialData[key]
+    })
+    Object.keys(state.errors).forEach(key => delete state.errors[key])
+    Object.keys(state.touched).forEach(key => delete state.touched[key])
   }
 
-  // Le formulaire est-il valide ?
-  const isValid = computed(() => {
-    return Object.values(errors).every(e => !e)
-  })
+  /**
+   * Définir les données du formulaire
+   */
+  function setFormData(data: Partial<T>): void {
+    Object.keys(data).forEach(key => {
+      state.formData[key] = data[key]
+    })
+  }
+
+  /**
+   * Obtenir l'erreur d'un champ
+   */
+  function getError(field: string): string | undefined {
+    return state.touched[field] ? state.errors[field] : undefined
+  }
+
+  /**
+   * Vérifier si un champ a une erreur
+   */
+  function hasError(field: string): boolean {
+    return state.touched[field] && !!state.errors[field]
+  }
+
+  /**
+   * Obtenir les données du formulaire (copie)
+   */
+  function getFormData(): T {
+    return { ...state.formData } as T
+  }
 
   return {
-    formData,
-    errors,
-    touched,
+    // État réactif (toRefs pour pouvoir déstructurer)
+    ...toRefs(state),
+    // Computed
+    isValid,
+    isDirty,
+    // Méthodes
     validateField,
     validateAll,
     handleBlur,
     handleInput,
     resetForm,
-    isValid
+    setFormData,
+    getError,
+    hasError,
+    getFormData
   }
 }
 
-// Regles de validation reutilisables
+// ============ RÈGLES DE VALIDATION PRÉDÉFINIES ============
+
 export const validationRules = {
-  required: (message = 'Ce champ est obligatoire') => (value: any) => {
-    if (value === null || value === undefined || value === '') {
-      return message
-    }
-    return true
-  },
+  /**
+   * Champ obligatoire
+   */
+  required: (message = 'Ce champ est obligatoire'): ValidationRule => 
+    (value) => {
+      if (value === null || value === undefined || value === '') {
+        return message
+      }
+      if (Array.isArray(value) && value.length === 0) {
+        return message
+      }
+      return true
+    },
 
-  minLength: (min: number, message?: string) => (value: string) => {
-    if (value.length < min) {
-      return message || `Minimum ${min} caractères`
-    }
-    return true
-  },
+  /**
+   * Longueur minimale
+   */
+  minLength: (min: number, message?: string): ValidationRule =>
+    (value) => {
+      if (value && value.length < min) {
+        return message || `Minimum ${min} caractères requis`
+      }
+      return true
+    },
 
-  maxLength: (max: number, message?: string) => (value: string) => {
-    if (value.length > max) {
-      return message || `Maximum ${max} caractères`
-    }
-    return true
-  },
+  /**
+   * Longueur maximale
+   */
+  maxLength: (max: number, message?: string): ValidationRule =>
+    (value) => {
+      if (value && value.length > max) {
+        return message || `Maximum ${max} caractères autorisés`
+      }
+      return true
+    },
 
-  isbn: (message = 'Format ISBN invalide (978-XXXXXXXXXX)') => (value: string) => {
-    const isbnRegex = /^978-\d{10}$/
-    if (!isbnRegex.test(value)) {
-      return message
-    }
-    return true
-  },
+  /**
+   * Validation email
+   */
+  email: (message = 'Adresse email invalide'): ValidationRule =>
+    (value) => {
+      if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        return message
+      }
+      return true
+    },
 
-  positiveNumber: (message = 'Doit être un nombre positif') => (value: number) => {
-    if (typeof value !== 'number' || value <= 0) {
-      return message
-    }
-    return true
-  },
+  /**
+   * Validation ISBN (format: 978-XXXXXXXXXX)
+   */
+  isbn: (message = 'Format ISBN invalide (ex: 978-2070360024)'): ValidationRule =>
+    (value) => {
+      if (value && !/^978-\d{10}$/.test(value)) {
+        return message
+      }
+      return true
+    },
 
-  year: (min: number, max: number) => (value: number) => {
-    if (value < min || value > max) {
-      return `Année entre ${min} et ${max}`
+  /**
+   * Nombre positif
+   */
+  positiveNumber: (message = 'Doit être un nombre positif'): ValidationRule =>
+    (value) => {
+      if (value !== null && value !== undefined && value !== '') {
+        const num = Number(value)
+        if (isNaN(num) || num < 0) {
+          return message
+        }
+      }
+      return true
+    },
+
+  /**
+   * Nombre minimum
+   */
+  min: (minValue: number, message?: string): ValidationRule =>
+    (value) => {
+      if (value !== null && value !== undefined && value !== '') {
+        const num = Number(value)
+        if (!isNaN(num) && num < minValue) {
+          return message || `La valeur minimale est ${minValue}`
+        }
+      }
+      return true
+    },
+
+  /**
+   * Nombre maximum
+   */
+  max: (maxValue: number, message?: string): ValidationRule =>
+    (value) => {
+      if (value !== null && value !== undefined && value !== '') {
+        const num = Number(value)
+        if (!isNaN(num) && num > maxValue) {
+          return message || `La valeur maximale est ${maxValue}`
+        }
+      }
+      return true
+    },
+
+  /**
+   * Validation d'année
+   */
+  year: (message = 'Année invalide'): ValidationRule =>
+    (value) => {
+      if (value !== null && value !== undefined && value !== '') {
+        const currentYear = new Date().getFullYear()
+        const year = Number(value)
+        if (isNaN(year) || year < 1450 || year > currentYear + 1) {
+          return message
+        }
+      }
+      return true
+    },
+
+  /**
+   * Pattern personnalisé
+   */
+  pattern: (regex: RegExp, message: string): ValidationRule =>
+    (value) => {
+      if (value && !regex.test(value)) {
+        return message
+      }
+      return true
+    },
+
+  /**
+   * URL valide
+   */
+  url: (message = 'URL invalide'): ValidationRule =>
+    (value) => {
+      if (value) {
+        try {
+          new URL(value)
+        } catch {
+          return message
+        }
+      }
+      return true
     }
-    return true
-  }
 }
